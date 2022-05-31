@@ -1,0 +1,125 @@
+MODULE importar_arquivo INPUT.
+
+  DATA:
+   lv_subrc      TYPE          sy-subrc,
+   lv_tabix      TYPE          sy-tabix,
+   lt_filetable  TYPE          filetable,
+   wa_filetable  TYPE          file_table,
+   lv_filename   TYPE          string,
+   lt_ztbfic032  TYPE TABLE OF ztbfic032,
+   wa_ztbfic032  TYPE          ztbfic032,
+   lt_data_tab   TYPE          table_of_strings,
+   wa_data_tab   TYPE          string.
+
+  IF function EQ 'ARQUIVO'.(este é o function do botão criado para excel quando clica em 'entradas novas').
+
+
+* Popup para escolher o arquivo à ser importado
+    CALL METHOD cl_gui_frontend_services=>file_open_dialog
+      EXPORTING
+        file_filter             = '(*.csv)|*.csv|(*.txt)|*.txt|'
+      CHANGING
+        file_table              = lt_filetable
+        rc                      = lv_subrc
+      EXCEPTIONS
+        file_open_dialog_failed = 1
+        cntl_error              = 2
+        error_no_gui            = 3
+        not_supported_by_gui    = 4
+        OTHERS                  = 5.
+
+    IF sy-subrc IS INITIAL.
+
+* Importar o arquivo
+      READ TABLE lt_filetable
+            INTO wa_filetable
+                 INDEX 1.
+
+      IF sy-subrc IS INITIAL.
+
+        lv_filename = wa_filetable-filename.
+
+        CALL METHOD cl_gui_frontend_services=>gui_upload
+          EXPORTING
+            filename                = lv_filename
+            has_field_separator     = ';'
+          CHANGING
+            data_tab                = lt_data_tab
+          EXCEPTIONS
+            file_open_error         = 1
+            file_read_error         = 2
+            no_batch                = 3
+            gui_refuse_filetransfer = 4
+            invalid_type            = 5
+            no_authority            = 6
+            unknown_error           = 7
+            bad_data_format         = 8
+            header_not_allowed      = 9
+            separator_not_allowed   = 10
+            header_too_long         = 11
+            unknown_dp_error        = 12
+            access_denied           = 13
+            dp_out_of_memory        = 14
+            disk_full               = 15
+            dp_timeout              = 16
+            not_supported_by_gui    = 17
+            error_no_gui            = 18
+            OTHERS                  = 19.
+
+        IF sy-subrc IS NOT INITIAL.
+          MESSAGE ID sy-msgid
+                TYPE sy-msgty
+              NUMBER sy-msgno
+                WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+        ENDIF.
+
+        SORT lt_data_tab.
+        DELETE ADJACENT DUPLICATES FROM lt_data_tab.
+
+        neuer = 'J'.
+
+* Passar valores importados para estrutura
+        LOOP AT lt_data_tab INTO wa_data_tab.
+
+* Quebra linha importada nos campos da estrutura
+          SPLIT wa_data_tab
+             AT ';'
+           INTO wa_ztbfic032-bukrs
+                wa_ztbfic032-lifnr
+                wa_ztbfic032-ktokk
+                wa_ztbfic032-zterm
+                wa_ztbfic032-matnr.
+
+* Converte o campo material
+          CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+            EXPORTING
+              input  = wa_ztbfic032-matnr
+            IMPORTING
+              output = wa_ztbfic032-matnr.
+
+          CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+            EXPORTING
+              input  = wa_ztbfic032-lifnr
+            IMPORTING
+              output = wa_ztbfic032-lifnr.
+
+          wa_ztbfic032-mandt = sy-mandt.
+
+          <vim_extract_struc> = wa_ztbfic032.
+
+          PERFORM move_extract_to_view_wa.
+          lv_subrc = 8.
+          lv_tabix = lv_tabix + 1.
+          nextline = nextline + 1.
+          PERFORM check_key.
+          PERFORM nicht_vorhanden USING lv_subrc lv_tabix.
+
+        ENDLOOP.
+
+      ENDIF.
+
+    ENDIF.
+
+  ENDIF.
+
+ENDMODULE.                 " IMPORTAR_ARQUIVO  INPUT
